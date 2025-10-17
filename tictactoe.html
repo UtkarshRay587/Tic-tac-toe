@@ -1,0 +1,459 @@
+<!--
+Tic Tac Toe - Single-file HTML
+Features:
+- Theme: red & black
+- Single-player (AI) with 3 difficulties: Easy (random), Medium (minimax depth-limited), Hard (minimax)
+- Multiplayer (local 2 players)
+- Scoreboard (persistent via localStorage)
+- Choose symbol (X or O) and who starts
+- Undo (1 move) and Move history
+- Highlight winning line, animations, responsive layout
+- Instructions and GitHub hosting notes included below
+
+To host on GitHub Pages:
+1. Create a new repository (public).
+2. Add this file named `index.html` to the repo (or paste via web editor).
+3. In repository Settings > Pages, set source to `main` branch / root. Your site will be published at `https://<username>.github.io/<repo>/`.
+--><!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tic Tac Toe — Red & Black</title>
+  <style>
+    :root{--bg:#0b0b0b;--card:#111;--accent:#f23b3b;--muted:#999;--board:#1a1a1a;--win:#ff9b9b}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#050505 0%, #0f0f0f 100%);color:#eee;display:flex;align-items:center;justify-content:center;padding:24px}
+    .app{width:100%;max-width:980px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    h1{font-size:20px;letter-spacing:0.4px;margin:0}
+    .controls{display:flex;gap:10px;align-items:center}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}.layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+@media (max-width:880px){.layout{grid-template-columns:1fr}}
+
+.sidebar{display:flex;flex-direction:column;gap:12px}
+.board-wrap{display:flex;flex-direction:column;gap:12px}
+
+.board{width:100%;max-width:520px;aspect-ratio:1/1;background:var(--board);display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px;border-radius:12px}
+.cell{background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:72px;cursor:pointer;user-select:none;border:2px solid rgba(255,255,255,0.03);transition:transform .12s ease, background .12s ease}
+.cell:hover{transform:scale(1.02)}
+.cell.disabled{cursor:not-allowed;opacity:0.9}
+.x{color:#fff}
+.o{color:var(--accent)}
+
+.status{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:10px;color:inherit;cursor:pointer}
+.btn.ghost{background:transparent}
+.btn.primary{background:var(--accent);border-color:transparent;color:#111}
+
+.scoreboard{display:flex;gap:10px;align-items:center}
+.score-pill{background:#0b0b0b;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);min-width:84px;text-align:center}
+
+.options{display:flex;flex-direction:column;gap:8px}
+label{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+select,input[type=checkbox]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#080808;color:#eee}
+
+.moves{max-height:220px;overflow:auto;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
+.move{display:flex;justify-content:space-between;padding:6px;border-radius:6px}
+
+.winline{background:linear-gradient(90deg, rgba(242,59,59,0.12), rgba(242,59,59,0.06));box-shadow:0 8px 30px rgba(242,59,59,0.06)}
+
+footer{margin-top:12px;color:var(--muted);font-size:13px}
+
+/* simple animation for win highlight */
+.winning{animation:winPulse .9s infinite}
+@keyframes winPulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+.small{font-size:13px;color:var(--muted)}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>tic tac toe — <span style="color:var(--accent)">red & black</span></h1>
+      <div class="controls">
+        <div class="card small" id="currentMode">Mode: <strong id="modeLabel">Single Player</strong></div>
+        <button class="btn" id="resetStorage">Reset Scores</button>
+      </div>
+    </header><div class="layout">
+  <div class="sidebar">
+    <div class="card options">
+      <label>Mode
+        <select id="mode">
+          <option value="single">Single Player</option>
+          <option value="local">Multiplayer (Local)</option>
+        </select>
+      </label>
+
+      <label>Difficulty
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+
+      <label>Choose your symbol
+        <select id="playerSymbol">
+          <option value="X">X</option>
+          <option value="O">O</option>
+        </select>
+      </label>
+
+      <label>Who starts
+        <select id="starter">
+          <option value="player">You / Player 1</option>
+          <option value="ai">AI / Player 2</option>
+          <option value="random">Random</option>
+        </select>
+      </label>
+
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn" id="newGame">New Game</button>
+        <button class="btn" id="undoBtn">Undo</button>
+        <button class="btn" id="swapBtn">Swap X/O</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>Scoreboard</strong>
+        <small class="small">Persistent</small>
+      </div>
+      <div class="scoreboard">
+        <div class="score-pill">You: <div id="scoreYou">0</div></div>
+        <div class="score-pill">Ties: <div id="scoreTie">0</div></div>
+        <div class="score-pill">Opponent: <div id="scoreOpp">0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="display:block;margin-bottom:6px">Move History</strong>
+      <div class="moves" id="moves"></div>
+    </div>
+
+    <div class="card small">
+      <strong>Tips</strong>
+      <ul style="margin:8px 0 0 16px;color:var(--muted)">
+        <li>Try center first for best odds.</li>
+        <li>Medium AI uses limited minimax — harder but fast.</li>
+        <li>Undo allows one-step rollback.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="status small">Turn: <strong id="turnIndicator">—</strong></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn ghost" id="hintBtn">Hint</button>
+          <button class="btn primary" id="restart">Restart</button>
+        </div>
+      </div>
+
+      <div class="board" id="board" aria-label="Tic Tac Toe board">
+        <!-- 9 cells appended by JS -->
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="small">Game result: <strong id="result">—</strong></div>
+        <div class="small">Theme: <span style="color:var(--accent)">Red & Black</span></div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="small">Made for GitHub Pages — save this file as <code>index.html</code> and publish the repo. Enjoy! </div>
+    </footer>
+  </div>
+</div>
+
+  </div>  <script>
+    // Game state
+    const WIN_COMBOS = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    const boardEl = document.getElementById('board');
+    const modeEl = document.getElementById('mode');
+    const modeLabel = document.getElementById('modeLabel');
+    const difficultyEl = document.getElementById('difficulty');
+    const playerSymbolEl = document.getElementById('playerSymbol');
+    const starterEl = document.getElementById('starter');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const resultEl = document.getElementById('result');
+    const scoreYou = document.getElementById('scoreYou');
+    const scoreTie = document.getElementById('scoreTie');
+    const scoreOpp = document.getElementById('scoreOpp');
+    const movesEl = document.getElementById('moves');
+    const newGameBtn = document.getElementById('newGame');
+    const restartBtn = document.getElementById('restart');
+    const undoBtn = document.getElementById('undoBtn');
+    const swapBtn = document.getElementById('swapBtn');
+    const hintBtn = document.getElementById('hintBtn');
+    const resetStorageBtn = document.getElementById('resetStorage');
+
+    let cells = [];
+    let state = Array(9).fill(null);
+    let player = 'X';
+    let ai = 'O';
+    let current = null; // 'player' or 'opponent' representing whose turn
+    let mode = 'single';
+    let difficulty = 'medium';
+    let history = [];
+    let scores = {you:0,tie:0,opp:0};
+    let gameOver = false;
+
+    function init(){
+      // build cells
+      boardEl.innerHTML='';
+      for(let i=0;i<9;i++){
+        const c = document.createElement('div');
+        c.className='cell';
+        c.dataset.i = i;
+        c.addEventListener('click', onCellClick);
+        boardEl.appendChild(c);
+      }
+      cells = Array.from(document.querySelectorAll('.cell'));
+
+      // load settings
+      mode = localStorage.getItem('ttt_mode') || 'single';
+      difficulty = localStorage.getItem('ttt_diff') || 'medium';
+      player = localStorage.getItem('ttt_player') || 'X';
+      ai = player === 'X' ? 'O' : 'X';
+      document.getElementById('mode').value = mode;
+      document.getElementById('difficulty').value = difficulty;
+      document.getElementById('playerSymbol').value = player;
+      document.getElementById('starter').value = 'player';
+
+      // load scores
+      const s = JSON.parse(localStorage.getItem('ttt_scores')||'null');
+      if(s){scores=s}
+      renderScores();
+
+      attachUI();
+      startNewGame(false);
+    }
+
+    function attachUI(){
+      modeEl.addEventListener('change', ()=>{mode = modeEl.value; modeLabel.textContent = mode==='single' ? 'Single Player' : 'Local Multiplayer'; localStorage.setItem('ttt_mode', mode); startNewGame();});
+      difficultyEl.addEventListener('change', ()=>{difficulty = difficultyEl.value; localStorage.setItem('ttt_diff', difficulty);});
+      playerSymbolEl.addEventListener('change', ()=>{player = playerSymbolEl.value; ai = player==='X'? 'O':'X'; localStorage.setItem('ttt_player', player); renderScores(); startNewGame();});
+      starterEl.addEventListener('change', ()=>{startNewGame();});
+      newGameBtn.addEventListener('click', ()=>startNewGame());
+      restartBtn.addEventListener('click', ()=>resetBoard());
+      undoBtn.addEventListener('click', ()=>undo());
+      swapBtn.addEventListener('click', ()=>{player = player==='X'?'O':'X'; ai = player==='X'?'O':'X'; document.getElementById('playerSymbol').value = player; localStorage.setItem('ttt_player', player); startNewGame();});
+      hintBtn.addEventListener('click', ()=>{const move = findBestMove(state, ai); if(move!=-1) flashCell(move)});
+      resetStorageBtn.addEventListener('click', ()=>{localStorage.removeItem('ttt_scores'); scores={you:0,tie:0,opp:0}; renderScores();});
+    }
+
+    function startNewGame(clearHistory=true){
+      state = Array(9).fill(null);
+      history = [];
+      gameOver = false;
+      cells.forEach(c=>{c.textContent='';c.classList.remove('x','o','disabled','winning')});
+      movesEl.innerHTML='';
+      resultEl.textContent='—';
+
+      // who starts
+      const starter = document.getElementById('starter').value;
+      if(starter==='random'){ current = Math.random()<0.5 ? 'player':'opponent'; }
+      else current = (starter==='ai' ? 'opponent' : 'player');
+
+      if(mode==='local') current='player';
+
+      updateTurnUI();
+
+      // if AI starts
+      if(mode==='single' && current==='opponent'){ aiTurn(); }
+    }
+
+    function resetBoard(){ scores = {you:0,tie:0,opp:0}; localStorage.setItem('ttt_scores', JSON.stringify(scores)); renderScores(); startNewGame(); }
+
+    function renderScores(){ scoreYou.textContent = scores.you; scoreTie.textContent = scores.tie; scoreOpp.textContent = scores.opp; }
+
+    function onCellClick(e){
+      if(gameOver) return;
+      const i = Number(e.currentTarget.dataset.i);
+      if(state[i]) return; // already filled
+
+      if(mode==='single'){
+        if(current!=='player') return; // wait for player turn
+        makeMove(i, player);
+        if(!gameOver){ current='opponent'; updateTurnUI(); setTimeout(()=>aiTurn(), 350); }
+      } else {
+        // local multiplayer
+        const symbol = current==='player' ? player : ai; // player is player1, ai variable acts as player2 symbol
+        makeMove(i, symbol);
+        if(!gameOver){ current = current==='player' ? 'opponent' : 'player'; updateTurnUI(); }
+      }
+    }
+
+    function makeMove(i, symbol){
+      state[i] = symbol;
+      const el = cells[i];
+      el.textContent = symbol;
+      el.classList.add(symbol.toLowerCase());
+      el.classList.add('disabled');
+      history.push({i, symbol});
+      addMoveHistory(symbol,i);
+      checkGameEnd();
+    }
+
+    function addMoveHistory(symbol,index){
+      const m = document.createElement('div');
+      m.className='move';
+      m.textContent = `${symbol} to ${index+1}`;
+      const t = document.createElement('div'); t.style.opacity=0.6; t.textContent = new Date().toLocaleTimeString();
+      m.appendChild(t);
+      movesEl.prepend(m);
+    }
+
+    function checkGameEnd(){
+      const winnerData = getWinner(state);
+      if(winnerData){
+        gameOver = true;
+        resultEl.textContent = `${winnerData.player} wins!`;
+        highlightWin(winnerData.combo);
+        // update scores
+        if((mode==='single' && winnerData.player===player) || (mode==='local' && winnerData.player===player)){
+          scores.you++;
+        } else {
+          scores.opp++;
+        }
+        localStorage.setItem('ttt_scores', JSON.stringify(scores));
+        renderScores();
+        return;
+      }
+      if(state.every(Boolean)){
+        gameOver = true;
+        resultEl.textContent = 'Tie';
+        scores.tie++;
+        localStorage.setItem('ttt_scores', JSON.stringify(scores));
+        renderScores();
+      }
+    }
+
+    function getWinner(b){
+      for(const combo of WIN_COMBOS){
+        const [a,c,d] = combo;
+        if(b[combo[0]] && b[combo[0]]===b[combo[1]] && b[combo[0]]===b[combo[2]]){
+          return {player:b[combo[0]], combo};
+        }
+      }
+      return null;
+    }
+
+    function highlightWin(combo){
+      combo.forEach(i=>{cells[i].classList.add('winning')});
+    }
+
+    function aiTurn(){
+      if(gameOver) return;
+      const diff = difficultyEl.value;
+      let move = -1;
+      if(diff==='easy'){
+        const empties = state.map((v,i)=>v?null:i).filter(v=>v!==null);
+        move = empties[Math.floor(Math.random()*empties.length)];
+      } else if(diff==='medium'){
+        // try minimax with depth limit 4, otherwise random best
+        move = findBestMove(state, ai, 4);
+        if(move===-1){ const empties = state.map((v,i)=>v?null:i).filter(v=>v!==null); move = empties[Math.floor(Math.random()*empties.length)]; }
+      } else {
+        move = findBestMove(state, ai);
+      }
+      if(move!=-1) makeMove(move, ai);
+      if(!gameOver){ current='player'; updateTurnUI(); }
+    }
+
+    function updateTurnUI(){
+      document.getElementById('modeLabel').textContent = mode==='single' ? 'Single Player' : 'Local Multiplayer';
+      if(gameOver) { turnIndicator.textContent = '—'; return; }
+      if(mode==='single'){
+        turnIndicator.textContent = current==='player' ? `${player} (You)` : `${ai} (Opponent)`;
+      } else {
+        turnIndicator.textContent = current==='player' ? `${player} (P1)` : `${ai} (P2)`;
+      }
+    }
+
+    function undo(){
+      if(history.length===0 || gameOver) return;
+      const last = history.pop();
+      state[last.i] = null;
+      const el = cells[last.i];
+      el.textContent=''; el.classList.remove('x','o','disabled','winning');
+      // if single and last was player move, also undo AI move if exists
+      if(mode==='single' && history.length>0){
+        const prev = history[history.length-1];
+        if(prev && prev.symbol===ai){
+          const p = history.pop();
+          state[p.i]=null; const el2=cells[p.i]; el2.textContent=''; el2.classList.remove('x','o','disabled','winning');
+        }
+      }
+      // rebuild moves list
+      movesEl.innerHTML=''; history.slice().reverse().forEach(h=>{const m=document.createElement('div');m.className='move';m.textContent=`${h.symbol} to ${h.i+1}`;movesEl.appendChild(m)});
+      gameOver=false;
+      current = mode==='single' ? 'player' : (current==='player' ? 'opponent' : 'player');
+      updateTurnUI();
+    }
+
+    function flashCell(i){
+      const el = cells[i]; el.animate([{transform:'scale(1)'},{transform:'scale(1.08)'},{transform:'scale(1)'}],{duration:500});
+    }
+
+    // Minimax implementation for Tic Tac Toe
+    function findBestMove(board, symbol, depthLimit=9){
+      const human = player;
+      const aiSym = symbol;
+      const opponent = human===aiSym? aiSym : human; // not used directly
+
+      function score(b){
+        const w = getWinner(b);
+        if(w){
+          if(w.player===aiSym) return 10;
+          if(w.player===human) return -10;
+        }
+        return 0;
+      }
+
+      function available(b){return b.map((v,i)=>v?null:i).filter(v=>v!==null)}
+
+      function minimax(b, depth, isMax){
+        const s = score(b);
+        if(s!==0 || depth===0 || b.every(Boolean)) return s;
+        const avail = available(b);
+        if(isMax){
+          let best=-Infinity;
+          for(const idx of avail){ b[idx]=aiSym; const val = minimax(b, depth-1, false); b[idx]=null; best = Math.max(best, val); }
+          return best;
+        } else {
+          let best=Infinity;
+          for(const idx of avail){ b[idx]=human; const val = minimax(b, depth-1, true); b[idx]=null; best = Math.min(best, val); }
+          return best;
+        }
+      }
+
+      const avail = available(board);
+      if(avail.length===0) return -1;
+
+      let bestMove = -1;
+      let bestVal = -Infinity;
+      for(const idx of avail){
+        board[idx]=aiSym;
+        const val = minimax(board, depthLimit-1, false);
+        board[idx]=null;
+        if(val>bestVal){ bestVal=val; bestMove=idx; }
+      }
+      return bestMove;
+    }
+
+    // init on load
+    init();
+  </script></body>
+</html>
